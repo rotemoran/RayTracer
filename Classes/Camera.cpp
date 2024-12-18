@@ -3,21 +3,15 @@
 const int SCREEN_DIM = 800; // resolution
 const double SCREEN_WIDTH = 2;
 const double RATIO = SCREEN_WIDTH / SCREEN_DIM; // pixel width
-glm::vec3 P_C(0, 0, 0); // image center
-glm::vec3 V_TOWARDS(0, 0, -1);
-glm::vec3 V_UP(0, 1, 0);
-glm::vec3 V_RIGHT = glm::cross(V_TOWARDS, V_UP);
+// Define vectors
+glm::vec3 P_C = glm::vec3(0.0, 0.0, 0.0); // Image center
+glm::vec3 V_TOWARDS = glm::normalize(glm::vec3(0.0, 0.0, -1.0)); // Towards vector
+glm::vec3 V_UP = glm::vec3(0.0, 1.0, 0.0); // Up vector
+glm::vec3 V_RIGHT = glm::normalize(glm::cross(V_TOWARDS, V_UP)); // Right
 
 Camera::Camera(const std::string& filename){
     screen = cv::Mat::zeros(SCREEN_DIM, SCREEN_DIM, CV_8UC3);
     parseConFile(filename);
-    // defining camera view variables
-    // int screenW =  rightUpCorner[0] - leftBottomCorner[0]; // world-space width
-    // int screenH =  rightUpCorner[1] - leftBottomCorner[1]; // world-space height
-    // screenDistance = position[3]; // camera's distance from scene
-    // fieldOfView = 2 * atan2(screenW / (2 * screenDistance)); // verticl FOV = horizontal FOV
-    // pixelSize = screenW / SCREEN_DIM; // Pixel width = Pixel height
-    std::cout << "Got before create scene: " << std::endl;
     createScene();
 }
 
@@ -52,7 +46,7 @@ void Camera::parseConFile(const std::string& filename){
             // Global Ambient Light
             double r, g, b, unused;
             iss >> r >> g >> b >> unused;
-            ambientLight.push_back(std::make_shared<AmbientLight>(glm::vec3(r, g, b)));
+            ambientLight.push_back(new AmbientLight(glm::vec3(r, g, b)));
         }
         else if (type == "o" || type == "r" || type == "t") {
             // Object (Sphere or Plane)
@@ -86,36 +80,36 @@ void Camera::parseConFile(const std::string& filename){
         }
     }
     
-    // elments creation
+    // Add objects to the scene
     for (unsigned long i = 0; i < elements.size(); i++) {
         std::vector<std::string> element = elements[i];
         std::vector<std::string> color = colors[i];
+
         // Convert parameters and color to glm::vec3
         glm::vec3 params(std::stod(element[1]), std::stod(element[2]), std::stod(element[3]));
         glm::vec3 objColor(std::stod(color[0]), std::stod(color[1]), std::stod(color[2]));
 
-        std::shared_ptr<Object3D> newObject;
         if (std::stod(element[4]) > 0) {
-            // Create Sphere object
-            newObject = std::make_shared<Sphere>(
-                params,             // glm::vec3 parameters
-                objColor,           // glm::vec3 color
-                std::stod(color[3]), // Shininess
-                element[0],         // State
-                std::stod(element[4]) // Radius
-            );
-        } 
-        else {// Create Plane object
-            newObject = std::make_shared<Plane>(
-                params,             // glm::vec3 parameters
-                objColor,           // glm::vec3 color
-                std::stod(color[3]), // Shininess
-                element[0],         // State
-                std::stod(element[4]) // Radius (interpreted as thickness or another parameter)
-            );
+            // Create Sphere object and add to vector
+            objects.push_back(new Sphere(
+                params,                 // glm::vec3 parameters
+                objColor,               // glm::vec3 color
+                std::stod(color[3]),    // Shininess
+                element[0],             // State
+                std::stod(element[4])   // Radius
+            ));
+        } else {
+            // Create Plane object and add to vector
+            objects.push_back(new Plane(
+                params,                 // glm::vec3 parameters
+                objColor,               // glm::vec3 color
+                std::stod(color[3]),    // Shininess
+                element[0],             // State
+                std::stod(element[4])   // d 
+            ));
         }
-        insertSorted(newObject);
     }
+    // Add lights to the scene
     int spotlightNextIndx = 0;
     for (unsigned long i = 0; i < lights.size(); i++) {
         std::vector<std::string> light = lights[i];
@@ -127,18 +121,19 @@ void Camera::parseConFile(const std::string& filename){
 
         // Spotlight = 1.0, Directional = 0.0
         if (std::stod(light[3]) == 0.0) {
-            // Create Directional Light
-            directionalLights.push_back(std::make_shared<DirectionalLight>(
+            // Add directional light
+            directionalLights.push_back(new DirectionalLight(
                 lightInten, // Intensity
                 lightDirec  // Direction
             ));
         } 
-        else {// Create Spotlight
+        else {
+            // Add spotlight
             std::vector<std::string> pos = lightsPositions[spotlightNextIndx];
             glm::vec3 lightPos(std::stod(pos[0]), std::stod(pos[1]), std::stod(pos[2]));
             spotlightNextIndx++;
 
-            spotlights.push_back(std::make_shared<Spotlight>(
+            spotlights.push_back(new Spotlight(
                 lightInten,          // Intensity
                 lightDirec,          // Direction
                 lightPos,            // Position
@@ -149,109 +144,218 @@ void Camera::parseConFile(const std::string& filename){
     file.close();
 }
 
+void Camera::createScene() {
+    const float SAMPLES = multiSampling ? 4 : 1; 
+    const float OFFSET = RATIO / 2.0f;                  // Sub-pixel offset for multi-sampling
+
+    for (int y = 0; y < screen.rows; y++) {           
+        for (int x = 0; x < screen.cols; x++) { 
+            glm::vec3 accumulatedColor(0.0f); 
+
+            if (multiSampling) {
+                // Generate 4 sub-pixel rays (2x2 grid for multi-sampling)
+                for (int i = 0; i < 2; i++) {
+                    for (int j = 0; j < 2; j++) {
+                        // Calculate sub-pixel position
+                        float offsetX = (j * OFFSET) - OFFSET / 2.0f;
+                        float offsetY = (i * OFFSET) - OFFSET / 2.0f;
+
+                        glm::vec3 subPixelCenter = P_C +
+                            float((x - SCREEN_DIM / 2) * RATIO + offsetX) * V_RIGHT -
+                            float((y - SCREEN_DIM / 2) * RATIO + offsetY) * V_UP;
+
+                        glm::vec3 rayDirection = glm::normalize(subPixelCenter - cameraPosition);
+                        Ray subPixelRay(rayDirection, cameraPosition);
+
+                        // Accumulate color
+                        accumulatedColor += getColor(subPixelRay, 5, nullptr);
+                    }
+                }
+            } else {
+                // Single ray per pixel (no multi-sampling)
+                glm::vec3 pixelCenter = P_C +
+                                        float((x - SCREEN_DIM / 2) * RATIO) * V_RIGHT -
+                                        float((y - SCREEN_DIM / 2) * RATIO) * V_UP;
+
+                glm::vec3 rayDirection = glm::normalize(pixelCenter - cameraPosition);
+                Ray pixelRay(rayDirection, cameraPosition);
+
+                accumulatedColor = getColor(pixelRay, 5, nullptr);
+            }
+
+            // Average the accumulated colors (for multi-sampling)
+            glm::vec3 finalColor = accumulatedColor / SAMPLES;
+
+            // Set pixel color
+            screen.at<cv::Vec3b>(y, x) = cv::Vec3b(
+                static_cast<uchar>(finalColor.b * 255),
+                static_cast<uchar>(finalColor.g * 255),
+                static_cast<uchar>(finalColor.r * 255)
+            );
+        }
+    }
+}
+
+// Calculate the color at a certain pixel
+glm:: vec3 Camera::getColor(Ray ray, int recursionDepth, const Object3D* currentObject) const{
+    glm::vec3 result = glm::vec3(0,0,0);
+    if (recursionDepth == 0)
+        return result;
+    
+    IntersectionPoint intersectedRes = findIntersectionObj(ray, currentObject);
+
+    if (!intersectedRes.isValid())
+        return result;
+
+    const Object3D* object = intersectedRes.getObject();
+    glm::vec3 intersectionPos = intersectedRes.getPosition();
+    
+    glm::vec3 N = object->getNormal(intersectionPos);
+    glm::vec3 Kr = glm::vec3(0,0,0);
+
+    if(object -> getState() == "r"){ // Reflective object
+        glm::vec3 reflectDirection = glm::normalize(glm::reflect(ray.getDirection(), N));
+        Ray reflectedRay(reflectDirection, intersectionPos);
+        Kr = getColor(reflectedRay, recursionDepth -1, object);
+        return glm::clamp(Kr, 0.0f, 1.0f);
+    }
+    if(object -> getState() == "t"){ // Transperent object. Must: object is a Shpere.
+        const Sphere* sphere = dynamic_cast<const Sphere*>(object);
+        float reflectiveIdx = 1.5f;
+        glm::vec3 refractDirection = glm::normalize(glm::refract(ray.getDirection(), N, 1.0f/reflectiveIdx)); 
+        Ray refractedRay(refractDirection, intersectionPos);
+
+        IntersectionPoint farIntersection =  sphere -> farIntersection(refractedRay);
+        glm::vec3 exitNormal = glm::normalize(object->getParameters() - farIntersection.getPosition());
+        refractDirection = glm::normalize(glm::refract(refractDirection, exitNormal, reflectiveIdx/1.0f));
+        Ray outRefractedRay(refractDirection, farIntersection.getPosition());
+        Kr = getColor(outRefractedRay, recursionDepth -1, object);
+        return glm::clamp(Kr, 0.0f, 1.0f);
+    }
+
+    // Normal object
+    glm::vec3 Ie = glm::vec3(0.0f, 0.0f, 0.0f);                                                
+    glm::vec3 Ia = ambientLight[0]->getIntensity();                                
+    glm::vec3 Ii, Li, Ri;
+    glm::vec3 Ka = object->getColor();
+    glm::vec3 Kd = Ka;
+    glm::vec3 Ks = glm::vec3(0.7f,0.7f,0.7f);
+    glm::vec3 Si = glm::vec3(1.0f, 1.0f, 1.0f);                                              
+    double n = object->getShininess();
+    glm::vec3 V = glm::normalize(ray.getPosition() - intersectionPos);              
+
+    if(object->getType() == "Plane"){
+        const Plane* plane = dynamic_cast<const Plane*>(object);
+        Ka = plane->checkerboardColor(Ka, intersectionPos);
+        Kd = Ka;
+    }
+    result += Ie + Ka * Ia;
+    for (size_t i=0; i<directionalLights.size(); i++){
+        Ii = directionalLights[i]->getIntensity();                              
+        Li = glm::normalize(-directionalLights[i]->getDirection());             
+        Ri = glm::normalize(glm::reflect(-Li, N));                              
+
+        Si = castShadowRay(intersectionPos, directionalLights[i], Li, object);
+
+        float diffuse = glm::dot(N, Li);
+        float specular = glm::pow(glm::max(glm::dot(V, Ri), 0.0f), n);
+
+        result += (glm::max(Kd * diffuse,0.0f) + glm::max(Ks * specular, 0.0f)) * Ii * Si;
+    }
+    for (size_t i=0; i<spotlights.size(); i++){
+        Ii = spotlights[i]->getIntensity();                                     
+        Li = glm::normalize(spotlights[i]->getPosition()-intersectionPos);      
+        Ri = glm::normalize(glm::reflect(-Li, N));                              
+        
+        Si = castShadowRay(intersectionPos, spotlights[i], Li, object);
+
+        float diffuse = glm::dot(N, Li); 
+        float specular = glm::pow(glm::max(glm::dot(V, Ri), 0.0f), n);
+        
+        glm::vec3 spotlightDir = glm::normalize(spotlights[i]->getDirection());
+        float cosTheta = glm::dot(spotlightDir, -Li);
+        if (cosTheta < spotlights[i]->getCutAngleCos()) 
+            Si = glm::vec3(0.0f, 0.0f, 0.0f); // Outside cone
+
+        result += (glm::max(Kd * diffuse,0.0f) + glm::max(Ks * specular, 0.0f)) * Ii * Si; 
+    }
+    return glm::clamp(result, 0.0f, 1.0f);
+}
 
 // find the intersection point to the closest obj
-IntersectionPoint Camera::findIntersectionObj(Ray ray) const {
+IntersectionPoint Camera::findIntersectionObj(Ray ray, const Object3D* currentObject) const {
     float minDist = FLT_MAX;
     IntersectionPoint minPoint = IntersectionPoint::NO_INTERSECTION;
-
+    
     // Iterate through all objects in the scene
-    for (const std::shared_ptr<Object3D>& obj : objects) { 
-        IntersectionPoint intersectionPoint = obj->intersection(ray);
+    for (const Object3D* obj : objects) { 
+        if(obj==currentObject)
+            continue;
 
+        IntersectionPoint intersectionPoint = obj->intersection(ray);
         // If the intersection exists and is closer than the current min distance
         if (intersectionPoint.isValid() && minDist > intersectionPoint.getDistance()) {
             minDist = intersectionPoint.getDistance();
             minPoint = intersectionPoint;
         }
     }
-
     return minPoint;
 }
 
-glm:: vec3 Camera::getColor(Ray shootingRay) const{
-    bool flag = false;
-    // int iterations = 0;
-    Ray ray = shootingRay;
+glm::vec3 Camera::castShadowRay(const glm::vec3& intersectionPoint,             // Ray origin from intersection point
+                                const AmbientLight* lightSource,                // Light source (raw pointer)
+                                const glm::vec3& Li,                            // Ray direction (toward light)
+                                const Object3D* currentObject                   // Object generating the shadow ray (raw pointer)
+                                ) const {             
 
-    while(!flag){ // CONTINUE!!!
-        IntersectionPoint intersectedRes = findIntersectionObj(ray);
-        if (intersectedRes.isValid()){
-        //     std::cout << "intersectedRes: " << std::endl;
-        //     std::cout << "  Position: (" 
-        //   << intersectedRes.getObject()->getParameters().x << ", "
-        //   << intersectedRes.getObject()->getParameters().y << ", "
-        //   << intersectedRes.getObject()->getParameters().z << ")" << std::endl;
+    for (const Object3D* object : objects) {
+        if (object == currentObject)
+            continue; // Ignore self-intersection
 
-            return glm::vec3(128,128,128);
+        // Intersect the ray with the object
+        IntersectionPoint new_intersection = object->intersection(Ray(Li, intersectionPoint)); 
+        
+        if (!new_intersection.isValid()) 
+            continue; // Skip if no intersection
+        
+        if (lightSource->getType() == "Spotlight") {
+            const Spotlight* spotlightSource = dynamic_cast<const Spotlight*>(lightSource);
+            // Check if the object is behind the spotlight
+            float lightDistance = glm::length(new_intersection.getPosition() - intersectionPoint);
+            float rayDistance = glm::length(intersectionPoint - spotlightSource->getPosition());
+            if (lightDistance > rayDistance)
+                continue; // Intersection point is behind the spotlight
         }
-        return glm::vec3(0,0,0);
+        return glm::vec3(0.0f, 0.0f, 0.0f);    // If we get here, the ray is blocked
     }
-    return glm::vec3(0,0,0);
+    return glm::vec3(1.0f, 1.0f, 1.0f);       // No objects block the ray
 }
 
-std::string Object3D::getName() const {
-    return "Base Object";  // Example default implementation
-}
-
-void Camera::createScene(){
-    // Double for loop
-    // screen = cv::Mat::zeros(800, 800, CV_8UC3); in the constroctor
-    for (int row = 0; row < screen.rows; row++) {
-        for (int col = 0; col < screen.cols; col++) {
-            glm::vec3 pixelCenter = P_C + 
-                                    float((row - floor(SCREEN_DIM/2))* RATIO) * V_RIGHT 
-                                    - float((col - floor(SCREEN_DIM/2))* RATIO) * V_UP ;
-            if((pixelCenter.x < -0.99 && pixelCenter.y < -0.99)  || (pixelCenter.x > 0.99 && pixelCenter.y > 0.99))
-                std::cout << "pixelCenter = (" 
-                        << pixelCenter.x << ", " 
-                        << pixelCenter.y << ", " 
-                        << pixelCenter.z << ")" 
-                        << std::endl;
-
-            Ray pixelRay(pixelCenter-cameraPosition, cameraPosition);
-            glm::vec3 color = getColor(pixelRay);
-            screen.at<cv::Vec3b>(row, col) = cv::Vec3b(
-            static_cast<uchar>(color.b), 
-            static_cast<uchar>(color.g), 
-            static_cast<uchar>(color.r)
-            );
-        }
-    }
-    cv::imshow("Image Window",screen);
-    cv::waitKey(0);
-}
-
-
-
-
-// Accessor for camera position
 glm::vec3 Camera::getPosition() const{
     return cameraPosition;
 }
 
-// Accessor for multi-sampling status
 bool Camera::isMultiSamplingEnabled() const{
     return multiSampling;
 }
 
-// Get all objects in the scene
-const std::vector<std::shared_ptr<Object3D>>& Camera::getObjects() const{
+cv::Mat Camera:: getScreen() const{
+    return screen;
+}
+
+const std::vector<Object3D*>& Camera::getObjects() const {
     return objects;
 }
 
-// Get Ambient Light
-const std::vector<std::shared_ptr<AmbientLight>>& Camera::getAmbientLight() const{
+const std::vector<AmbientLight*>& Camera::getAmbientLight() const {
     return ambientLight;
 }
 
-// Get all directional lights
-const std::vector<std::shared_ptr<DirectionalLight>>& Camera::getDirectionalLights() const{
+const std::vector<DirectionalLight*>& Camera::getDirectionalLights() const {
     return directionalLights;
 }
 
-// Get all spotlights
-const std::vector<std::shared_ptr<Spotlight>>& Camera::getSpotlights() const{
+const std::vector<Spotlight*>& Camera::getSpotlights() const {
     return spotlights;
 }
 
@@ -276,15 +380,17 @@ void Camera::toString(){
     }
 }
 
-// Custom comparator for sorting objects by their Z-coordinate
-bool compareByZ(const std::shared_ptr<Object3D>& obj1, const std::shared_ptr<Object3D>& obj2) {
-    glm::vec3 parameters1 = obj1 -> getParameters();
-    glm::vec3 parameters2 = obj2 -> getParameters();
-    return parameters1.z > parameters2.z; 
-}
-
-// Function to insert an object in sorted order
-void Camera::insertSorted(std::shared_ptr<Object3D> newObject) {
-    auto it = std::lower_bound(objects.begin(), objects.end(), newObject, compareByZ);
-    objects.insert(it, newObject);
+Camera::~Camera() {
+    for (Object3D* obj : objects) {
+        delete obj;
+    }
+    for (AmbientLight* light : ambientLight) {
+        delete light;
+    }
+    for (DirectionalLight* light : directionalLights) {
+        delete light;
+    }
+    for (Spotlight* light : spotlights) {
+        delete light;
+    }
 }

@@ -12,6 +12,10 @@ double Spotlight::getCutAngleCos() const {
     return cutAngleCos;
 }
 
+std::string Spotlight::getType() const {
+    return "Spotlight";
+}
+
 std::string Spotlight::toString() const {
     const glm:: vec3 inten = getIntensity();
     const glm:: vec3 direction = getDirection();
@@ -24,3 +28,4 @@ std::string Spotlight::toString() const {
         << " Cutoff angle cosine value: " << cutAngleCos << "}";
     return oss.str();
 }
+

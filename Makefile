@@ -35,5 +35,8 @@ $(binFolder)/%.o: $(classesFolder)/%.cpp
 clean:
 	rm -f $(OBJ_FILES) $(TARGET)
 
+# Combined clean and build target
+rebuild: clean all
+
 # Phony targets
-.PHONY: all clean
+.PHONY: all clean rebuild

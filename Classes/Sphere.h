@@ -4,7 +4,7 @@
 #include <iostream>
 #include <string>
 #include <vector>
-#include <glm/glm.hpp>  // Include GLM
+#include <glm/glm.hpp> 
 #include "Object3D.h"
 
 class Sphere: public Object3D{
@@ -18,10 +18,11 @@ public:
     double getRadius() const;
 
     std::string toString() const override;
+        std::string getType() const override;
+    glm:: vec3 getNormal(glm::vec3 intersectionPosition)const override;
+    IntersectionPoint intersection(const Ray& ray) const override;
 
-    IntersectionPoint intersection(Ray ray) override;
-    std::string getName() const override;
-    virtual ~Sphere() = default; // virtual destructor (inherits from Object3D)
+    IntersectionPoint farIntersection(const Ray& ray) const;
 };
 
 #endif // SPHERE_H

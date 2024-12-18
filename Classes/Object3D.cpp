@@ -20,18 +20,6 @@ std::string Object3D::getState() const{
     return state;
 }
 
-double Object3D::get1Pram() const{
-    return parameters[0];
-}
-
-double Object3D::get2Pram() const{
-    return parameters[1];
-}
-
-double Object3D::get3Parm() const{
-    return parameters[2];
-}
-
 std::string Object3D::toString() const {
     std::ostringstream oss;
     oss << "Parameters: (" << parameters[0] << ", " << parameters[1] << ", " << parameters[2] << "), "

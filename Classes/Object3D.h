@@ -8,17 +8,16 @@
 #include <vector>
 #include <cmath>
 #include <glm/glm.hpp>
-// #include "IntersectionPoint.h"
 #include "Ray.h"
 
 class IntersectionPoint;
 
 class Object3D{
     private:
-        const glm::vec3 parameters; // Represents {x, y, z}
-        const glm::vec3 color;  // Represents color {r, g, b}
+        const glm::vec3 parameters;     // Represents {x, y, z}
+        const glm::vec3 color;          // Represents color {r, g, b}
         const double shininess; 
-        const std::string state; // "n" for normal, "r" for reflective, "t" for transparent
+        const std::string state;        // "n" for normal, "r" for reflective, "t" for transparent
 
     public:
         // Constructor
@@ -28,15 +27,14 @@ class Object3D{
         glm:: vec3 getColor() const;
         double getShininess() const;
         std::string getState() const;
-        double get1Pram() const;
-        double get2Pram() const;
-        double get3Parm() const;
 
         virtual std::string toString() const;
-        virtual std::string getName() const;
-        virtual IntersectionPoint intersection(Ray ray) = 0; 
-
-        virtual ~Object3D() = default; // virtual destructor
+        virtual std::string getType() const = 0;
+        virtual glm:: vec3 getNormal(glm::vec3 intersectionPosition) const = 0;
+        virtual IntersectionPoint intersection(const Ray& ray) const = 0; 
+        
+        // virtual destructor
+        virtual ~Object3D() = default; 
 };
 
 #endif // OBJECT3D_H

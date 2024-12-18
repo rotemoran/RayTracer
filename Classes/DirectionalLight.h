@@ -4,7 +4,7 @@
 #include <iostream>
 #include <string>
 #include <sstream>
-#include <glm/glm.hpp>  // Include GLM
+#include <glm/glm.hpp> 
 #include "AmbientLight.h"
 
 
@@ -14,10 +14,10 @@ private:
 
 public:
    DirectionalLight(const glm::vec3 intensity, const glm::vec3 direction);
-   
-   glm::vec3 getDirection() const;
 
-   std::string toString() const;
+   glm::vec3 getDirection() const;
+   std::string getType() const override;
+   std::string toString() const override;
 };
 
 #endif // DirectionalLight_H

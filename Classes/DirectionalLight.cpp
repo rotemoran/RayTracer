@@ -1,13 +1,15 @@
 # include "DirectionalLight.h"
 
-#include <sstream>
-
 // Constructor
 DirectionalLight::DirectionalLight(const glm:: vec3 intensity, const glm::vec3 direction): 
         AmbientLight(intensity),direction(direction) {};
 
 glm::vec3 DirectionalLight::getDirection() const {
     return direction;
+}
+
+std::string DirectionalLight::getType() const{
+    return "DirectionalLight";
 }
 
 std::string DirectionalLight::toString() const {

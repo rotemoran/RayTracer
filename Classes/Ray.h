@@ -3,7 +3,7 @@
 
 #include <iostream>
 #include <string>
-#include <glm/glm.hpp>  // Include GLM
+#include <glm/glm.hpp>
 
 class Ray{
 private:

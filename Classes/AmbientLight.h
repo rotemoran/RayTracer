@@ -4,6 +4,7 @@
 #include <iostream>
 #include <string>
 #include <array>  
+#include <sstream>
 #include <glm/glm.hpp> // Include GLM
 
 class AmbientLight{
@@ -13,8 +14,9 @@ class AmbientLight{
     public:
         AmbientLight(const glm::vec3 intensity);
         glm::vec3 getIntensity() const;
-        
-        std::string toString() const;
+        virtual std::string getType() const;
+        virtual std::string toString() const;
+        virtual ~AmbientLight() = default;
 };
 
 #endif // AmbientLight_H
